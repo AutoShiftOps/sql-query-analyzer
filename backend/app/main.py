@@ -1,14 +1,18 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from collections import defaultdict
+import os
 import time
 import logging
-from schemas.models import QueryRequest, QueryAnalysisResult
-from agents.sql_analyzer import SQLAnalyzerAgent
+from .schemas.models import QueryRequest, QueryAnalysisResult
+from .agents.sql_analyzer import SQLAnalyzerAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+from dotenv import load_dotenv
+load_dotenv()  # loads backend/.env when running locally (if present) [web:146]
 
 # Initialize FastAPI
 app = FastAPI(
@@ -29,10 +33,43 @@ app.add_middleware(
 # Initialize analyzer
 analyzer = SQLAnalyzerAgent()
 
+# Simple in-memory rate limiter (use Redis for production)
+rate_limit_store = defaultdict(list)
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    if request.url.path == "/analyze":
+        client_ip = request.client.host
+        now = time.time()
+        
+        # Clean old requests (keep last 60 seconds)
+        rate_limit_store[client_ip] = [
+            t for t in rate_limit_store[client_ip] if now - t < 60
+        ]
+        
+        # Check limit (10 requests per minute per IP)
+        if len(rate_limit_store[client_ip]) >= 10:
+            raise HTTPException(status_code=429, detail="Rate limit exceeded. Try again in 1 minute.")
+        
+        rate_limit_store[client_ip].append(now)
+    
+    response = await call_next(request)
+    return response
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "SQL Query Analyzer"}
+
+@app.get("/capabilities")
+async def capabilities():
+    return {
+        "default_provider": os.getenv("DEFAULT_LLM_PROVIDER", "huggingface"),
+        "providers": {
+            "huggingface": bool(os.getenv("HF_API_KEY", "").strip()),
+            "openai": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        },
+    }
 
 @app.post("/analyze", response_model=QueryAnalysisResult)
 async def analyze_query(request: QueryRequest):

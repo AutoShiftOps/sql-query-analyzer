@@ -2,6 +2,10 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from enum import Enum
 
+class LLMProvider(str, Enum):
+    HUGGINGFACE = "huggingface"
+    OPENAI = "openai"
+
 class DatabaseType(str, Enum):
     POSTGRES = "postgresql"
     MYSQL = "mysql"
@@ -15,6 +19,10 @@ class QueryRequest(BaseModel):
     query: str = Field(..., description="SQL query to analyze")
     db_type: DatabaseType = Field(default=DatabaseType.POSTGRES)
     schema_info: Optional[str] = Field(None, description="Schema DDL for better context")
+     # NEW: provider dropdown target
+    llm_provider: LLMProvider = Field(default=LLMProvider.HUGGINGFACE)
+    # NEW: explicit toggle (so UI can run HF/OpenAI only when user asks)
+    use_llm: bool = Field(default=False)
     focus: str = Field(default="performance", description="Analysis focus: performance|security|readability")
 
 class OptimizationSuggestion(BaseModel):
