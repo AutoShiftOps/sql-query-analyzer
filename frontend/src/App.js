@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { AlertCircle, Zap, Shield, Eye } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { AlertCircle, Zap, Shield } from 'lucide-react';
 import QueryInput from './components/QueryInput';
 import ResultsPanel from './components/ResultsPanel';
 import OptimizationSuggestions from './components/OptimizationSuggestions';
@@ -15,15 +15,28 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [caps, setCaps] = useState(null);
+  const [llmProvider, setLlmProvider] = useState("huggingface");
+  const [useLlm] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const r = await axios.get(`${API_BASE_URL}/capabilities`);
+      setCaps(r.data);
+      setLlmProvider(r.data.default_provider || "huggingface");
+    })();
+  }, []);
+
   const handleAnalyze = async () => {
     try {
       setLoading(true);
       setError(null);
       
       const response = await axios.post(`${API_BASE_URL}/analyze`, {
-        query: query,
+        query,
         db_type: dbType,
-        focus: 'performance'
+        llm_provider: llmProvider,
+        use_llm: useLlm
       });
       
       setResult(response.data);
